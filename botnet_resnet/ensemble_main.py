@@ -2,9 +2,12 @@ import torch
 from torch import nn
 from torchvision.models import resnet50
 from bottleneck_transformer_pytorch.bottleneck_transformer_pytorch import BottleStack
+
 num_classes = 2
 
 x = torch.randn(2, 3, 96, 96)
+
+
 # layers = list(model.modules())
 # for i, _ in enumerate(layers):
 #     print(x.shape)
@@ -34,7 +37,7 @@ class Resnet_50_BotNet(nn.Module):
         super(Resnet_50_BotNet, self).__init__()
         self.resnet_50 = Resnet_50()
         self.bot_net = nn.Sequential(
-                                *list(resnet50().children())[:5],
+            *list(resnet50().children())[:5],
             BottleStack(
                 dim=256,
                 fmap_size=24,  # set specifically for imagenet's 224 x 224
@@ -46,9 +49,9 @@ class Resnet_50_BotNet(nn.Module):
                 rel_pos_emb=True,
                 activation=nn.ReLU()
             ),
-                                nn.AdaptiveAvgPool2d((1, 1)),
-                                nn.Flatten(1),
-                            )
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(1),
+        )
         self.fc_layer = nn.Sequential(nn.Linear(2024, 512),
                                       nn.ReLU(),
                                       nn.Dropout(0.5),
