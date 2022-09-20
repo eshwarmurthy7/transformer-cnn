@@ -136,3 +136,6 @@ dmypy.json
 
 #idea files
 .idea
+
+#Image files
+.tif
