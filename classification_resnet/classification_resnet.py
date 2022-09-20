@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import time
 from PIL import Image
-from utils import create_dir
+from utils.util_script import create_dir
 from torch.optim.lr_scheduler import StepLR
 
 import torch
@@ -14,16 +14,16 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 from torchvision import models, datasets, transforms
+from torchvision.models import resnet50
 import torch.nn.functional as F
 from tqdm import tqdm
 
-NUM_CLASSES = 11
+NUM_CLASSES = 2
 
 # TODO change for IG
 num_sub_classes = None
 learning_rate = 0.01
-BATCH_SIZE = 64
-CUDA = torch.cuda.is_available()
+BATCH_SIZE = 4
 
 # TODO change for IG(180)
 EPOCHS = 20
@@ -36,25 +36,39 @@ LOSS_DISPLAY_STEP = 100
 
 # TODO change for IG(20)
 SAVE_STEP = 5
-EXP_NAME = "wbc_model"
+EXP_NAME = "Resnet50_pytorch"
 # CE, CE_LABEL_SMOOTH, CE_WEIGHT, FOCAL_LOSS
 
 loss_fun = 'CE'
 create_dir(EXP_NAME)
 
-SHOULD_APPLY_FLIPPING_AUG = True
-SHOULD_APPLY_COLOR_AUG = True
-SHOULD_APPLY_ROTATION_AUG = True
+SHOULD_APPLY_FLIPPING_AUG = False
+SHOULD_APPLY_COLOR_AUG = False
+SHOULD_APPLY_ROTATION_AUG = False
 
 SHOULD_TEST = True
 
+def get_training_device():
+    global CUDA
+    if torch.cuda.is_available():
+        CUDA = True
+        device = torch.device("cuda")
+        print("Training on CUDA")
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        CUDA = False
+        device = torch.device("mps")
+        print("Training on mps")
+    else:
+        CUDA = False
+        device = torch.device("cpu")
+        print("Training on CPU")
 
 def set_bn_eval(module):
     if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
         module.eval()
-        
 
-def crop_center(img,size):
+
+def crop_center(img, size):
     x_center = img.shape[0] // 2
     y_center = img.shape[1] // 2
     img_crop = img[x_center - size // 2: x_center + size // 2, y_center - size // 2: y_center + size // 2]
@@ -65,8 +79,8 @@ def get_mean_and_std(x):
     size = 300
     img_crop = crop_center(x, size)
     x_mean, x_std = cv2.meanStdDev(img_crop)
-    x_mean = np.hstack(np.around(x_mean,2))
-    x_std = np.hstack(np.around(x_std,2))
+    x_mean = np.hstack(np.around(x_mean, 2))
+    x_std = np.hstack(np.around(x_std, 2))
     return x_mean, x_std
 
 
@@ -180,7 +194,7 @@ def color_transfer(img, factor_=1.0):
     return out_img
 
 
-class WBCDataset(Dataset):
+class PcamDataset(Dataset):
 
     def __init__(self, root_dir, mode, transform=None):
         self.root_dir = root_dir
@@ -205,7 +219,7 @@ class WBCDataset(Dataset):
     def init(self):
         self.classes = [data for data in os.listdir(self.root_dir) if not data.startswith('.')]
         # print(self.classes)
-        self.classes = ['ig', 'giantplatelet', 'notawbc', 'atypical-blast', 'neutrophil', 'nrbc', 'eosinophil', 'lymphocyte', 'basophil', 'monocyte', 'plateletclump']
+        self.classes = []
         print(self.classes)
         for idx, class_name in enumerate(self.classes):
             class_dir = os.path.join(self.root_dir, class_name)
@@ -216,7 +230,8 @@ class WBCDataset(Dataset):
 
         for i in range(len(self.classes)):
             # self.weights.append(len(self.images) * 1.0 / len(self.class_images[i]))
-            self.weights.append(max([len(class_image) for class_image in self.class_images]) / len(self.class_images[i]))
+            self.weights.append(
+                max([len(class_image) for class_image in self.class_images]) / len(self.class_images[i]))
 
         temp = list(zip(self.images, self.labels))
         random.shuffle(temp)
@@ -262,7 +277,8 @@ class WBCDataset(Dataset):
                 if class_idx not in [1, 10]:
                     apply_advance_aug_flag = random.randint(0, 1)
                     if apply_advance_aug_flag:
-                        parameters_list = [1.2, 1.5, 2, 3, 3, None, 0.9, 1.02, 3, 4, 5, -5, -6, -7, 1.3, 1.5, 1.7, 0, 1, 2,
+                        parameters_list = [1.2, 1.5, 2, 3, 3, None, 0.9, 1.02, 3, 4, 5, -5, -6, -7, 1.3, 1.5, 1.7, 0, 1,
+                                           2,
                                            3, 4, 2, (add_blur, adjust_gamma_hsv), (color_transfer, guassian_noise),
                                            (hue_change, guassian_noise), (adjust_gamma_hsv, guassian_noise),
                                            (adjust_gamma_hsv, sharpen_img)]
@@ -316,10 +332,10 @@ class WBCDataset(Dataset):
         half_patch_size = self.patch_size // 2
         half_patch_size_2 = self.patch_size_2 // 2
         img_1 = img[h // 2 - half_patch_size:h // 2 + half_patch_size,
-              w // 2 - half_patch_size:w // 2 + half_patch_size, :]
+                w // 2 - half_patch_size:w // 2 + half_patch_size, :]
 
         img_2 = img[h // 2 - half_patch_size_2:h // 2 + half_patch_size_2,
-              w // 2 - half_patch_size_2:w // 2 + half_patch_size_2, :]
+                w // 2 - half_patch_size_2:w // 2 + half_patch_size_2, :]
 
         # 0 - 255 ---> 0 - 1
         # img = img / 255
@@ -343,9 +359,9 @@ def make_dataloaders(data_dir):
         transforms.ToTensor(),
     ])
 
-    train_dataset = WBCDataset(os.path.join(data_dir, "train"), "train", transform=train_transforms)
+    train_dataset = PcamDataset(os.path.join(data_dir, "train"), "train", transform=train_transforms)
     if SHOULD_TEST:
-        test_dataset = WBCDataset(os.path.join(data_dir, "test"), "test", transform=test_transforms)
+        test_dataset = PcamDataset(os.path.join(data_dir, "test"), "test", transform=test_transforms)
     else:
         test_dataset = None
 
@@ -425,8 +441,8 @@ def test(data_loader, model, criterion, vis=False):
         predictions_prob = nn.Softmax(dim=1)(outputs).max(dim=1)[0]
         for j, label in enumerate(labels):
             f.write(file_names[j] + "," + str(labels[j].detach().cpu().numpy()) + "," +
-                    str(predictions[j].detach().cpu().numpy()) + "," + str(predictions_prob[j].detach().cpu().numpy()) + "\n")
-
+                    str(predictions[j].detach().cpu().numpy()) + "," + str(
+                predictions_prob[j].detach().cpu().numpy()) + "\n")
 
         temp_idx = 0
         for t, p, orig_img, file_name in zip(labels.view(-1), predictions.view(-1), orig_imges, file_names):
@@ -450,17 +466,8 @@ def main(data_path, model_path, model):
     train_loader, test_loader, train_dataset, _ = make_dataloaders(data_path)
 
     if model_path is not None:
-
-        if not CUDA:
-            model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-        else:
-            model.load_state_dict(torch.load(model_path))
-        model.fc_layer[3] = nn.Linear(512, num_sub_classes)
-        for param in list(model.parameters())[0:-4]:
-            param.requires_grad = False
-
-    if CUDA:
-        model = model.cuda()
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        model = model.to(device)
 
     # criterion = nn.NLLLoss()
     if loss_fun == 'CE':
@@ -522,7 +529,7 @@ def test_pretrained(model_path, data_path, model):
     if loss_fun == 'CE':
         criterion = nn.CrossEntropyLoss()
 
-    state_dict = torch.load(model_path,map_location=torch.device('cpu'))
+    state_dict = torch.load(model_path, map_location=torch.device('cpu'))
     model.load_state_dict(state_dict)
     model.eval()
 
@@ -579,32 +586,25 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', type=str, default="trainval",
                         help='Final fov s3 path data')
-    # '/home/avilash/Users/adithya/Dataset/wbc/wbc_data'
-    # '/home/avilash/Users/adithya/Dataset/ig/wbc_data'
-    # wbc_clean_exp
-    parser.add_argument('--data_dir', type=str, default='/Users/adhithya/Dataset/new_wbc/wbc_data_exp6_dset_6', required=False,
-                        help='Output directory')
-    # ./wbc_ig_clean_3/checkpoint_best.pth'
-    # ./wbc_intermediate_train/checkpoint_intermediate.pth
-    # model.apply(set_bn_eval)
-    parser.add_argument('--model', type=str, default=None,
-                        help='Output directory')
-    parser.add_argument('--sub_class_num', type=int, default='2',
-                        help='no of sub classes')
+    parser.add_argument('--data_dir', type=str,
+                        default='/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/'
+                                'Repos/transformer-cnn/data/histopathologic-cancer-'
+                                'detection', required=False,
+                                 help='Input directory')
+    parser.add_argument('--model', type=str, default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/"
+                                                     "Repos/transformer-cnn/data/histopathologic-cancer-"
+                                                     "detection/model_output", required=False,
+                                                      help='Output directory')
 
     args = parser.parse_args()
-    model = ConvNet()
+    model = resnet50()
+    device = get_training_device()
     if args.mode == "trainval":
         main(args.data_dir, args.model, model)
     elif args.mode == "test":
         if args.model is None:
             print("Please provide model")
         else:
-            if num_sub_classes:
-                model.fc_layer[3] = nn.Linear(512, num_sub_classes)
             test_pretrained(args.model, args.data_dir, model)
     else:
         print("Mode should either be trainval or test")
-
-
-# ['ig', 'giantplatelet', 'notawbc', 'atypical-blast', 'neutrophil', 'nrbc', 'eosinophil', 'lymphocyte', 'basophil', 'monocyte', 'plateletclump']
