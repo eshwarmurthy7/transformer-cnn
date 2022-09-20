@@ -32,7 +32,7 @@ EPOCHS = 20
 SGD_LR_DECAY_STEP = 10
 
 # TODO change for IG
-LOSS_DISPLAY_STEP = 100
+LOSS_DISPLAY_STEP = 1
 
 # TODO change for IG(20)
 SAVE_STEP = 5
@@ -46,7 +46,7 @@ SHOULD_APPLY_FLIPPING_AUG = False
 SHOULD_APPLY_COLOR_AUG = False
 SHOULD_APPLY_ROTATION_AUG = False
 
-SHOULD_TEST = True
+SHOULD_TEST = False
 
 def get_training_device():
     global CUDA
@@ -219,11 +219,10 @@ class PcamDataset(Dataset):
     def init(self):
         self.classes = [data for data in os.listdir(self.root_dir) if not data.startswith('.')]
         # print(self.classes)
-        self.classes = []
         print(self.classes)
         for idx, class_name in enumerate(self.classes):
             class_dir = os.path.join(self.root_dir, class_name)
-            class_images = [os.path.join(class_dir, f) for f in os.listdir(class_dir) if ".jpg" in f]
+            class_images = [os.path.join(class_dir, f) for f in os.listdir(class_dir) if ".tif" in f]
             self.class_images.append(class_images)
             self.images.extend(class_images)
             self.labels.extend([idx] * len(class_images))
@@ -329,18 +328,18 @@ class PcamDataset(Dataset):
                     M = cv2.getRotationMatrix2D((self.patch_size, self.patch_size), angle, 1.0)
                     img = cv2.warpAffine(img, M, (2 * self.patch_size, 2 * self.patch_size), flags=cv2.INTER_LINEAR)
 
-        half_patch_size = self.patch_size // 2
-        half_patch_size_2 = self.patch_size_2 // 2
-        img_1 = img[h // 2 - half_patch_size:h // 2 + half_patch_size,
-                w // 2 - half_patch_size:w // 2 + half_patch_size, :]
-
-        img_2 = img[h // 2 - half_patch_size_2:h // 2 + half_patch_size_2,
-                w // 2 - half_patch_size_2:w // 2 + half_patch_size_2, :]
-
-        # 0 - 255 ---> 0 - 1
-        # img = img / 255
-
-        img = img_2.astype(np.float32)
+        # half_patch_size = self.patch_size // 2
+        # half_patch_size_2 = self.patch_size_2 // 2
+        # img_1 = img[h // 2 - half_patch_size:h // 2 + half_patch_size,
+        #         w // 2 - half_patch_size:w // 2 + half_patch_size, :]
+        #
+        # img_2 = img[h // 2 - half_patch_size_2:h // 2 + half_patch_size_2,
+        #         w // 2 - half_patch_size_2:w // 2 + half_patch_size_2, :]
+        #
+        # # 0 - 255 ---> 0 - 1
+        # # img = img / 255
+        #
+        # img = img_2.astype(np.float32)
 
         if self.transform:
             img = self.transform(img)
@@ -466,7 +465,7 @@ def main(data_path, model_path, model):
     train_loader, test_loader, train_dataset, _ = make_dataloaders(data_path)
 
     if model_path is not None:
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        # model.load_state_dict(torch.load(model_path, map_location=device))
         model = model.to(device)
 
     # criterion = nn.NLLLoss()
@@ -587,13 +586,10 @@ if __name__ == "__main__":
     parser.add_argument('--mode', type=str, default="trainval",
                         help='Final fov s3 path data')
     parser.add_argument('--data_dir', type=str,
-                        default='/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/'
-                                'Repos/transformer-cnn/data/histopathologic-cancer-'
-                                'detection', required=False,
+                        default='/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/histopathologic-cancer-detection', required=False,
                                  help='Input directory')
-    parser.add_argument('--model', type=str, default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/"
-                                                     "Repos/transformer-cnn/data/histopathologic-cancer-"
-                                                     "detection/model_output", required=False,
+    parser.add_argument('--model', type=str, default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data"
+                                                     "/model_output", required=False,
                                                       help='Output directory')
 
     args = parser.parse_args()
