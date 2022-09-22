@@ -1,52 +1,49 @@
-import sys
+import argparse
 import os
 import random
-import argparse
+import sys
+
 import cv2
 import numpy as np
-import time
-from PIL import Image
-from utils.util_script import create_dir
-from torch.optim.lr_scheduler import StepLR
-
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
-from torchvision import models, datasets, transforms
+from torch.optim.lr_scheduler import StepLR
+from torch.utils.data import Dataset
+from torchvision import models, transforms
 from torchvision.models import resnet50
-import torch.nn.functional as F
 from tqdm import tqdm
+from botnet_resnet.ensemble_main import EnsembleBotResNet
+from bottleneck_transformer_pytorch.botnet_main import BotNet
+
+from utils.util_script import create_dir
 
 NUM_CLASSES = 2
-
-# TODO change for IG
 num_sub_classes = None
 learning_rate = 0.01
-BATCH_SIZE = 4
-
-# TODO change for IG(180)
-EPOCHS = 20
-
-# TODO change for IG(100)
+BATCH_SIZE = 32
+EPOCHS = 5
 SGD_LR_DECAY_STEP = 10
 
-# TODO change for IG
-LOSS_DISPLAY_STEP = 1
-
-# TODO change for IG(20)
+# Intermediate display step
+LOSS_DISPLAY_STEP = 2
 SAVE_STEP = 5
-EXP_NAME = "Resnet50_pytorch"
+INTERMEDIATE_TEST_STEP = 1000
+TEST_STOP_STEP = 10
+TRAIN_STOP_STEP = 10
+
+
+track_train_loss = []
+track_test_loss = []
 # CE, CE_LABEL_SMOOTH, CE_WEIGHT, FOCAL_LOSS
 
 loss_fun = 'CE'
-create_dir(EXP_NAME)
 
-SHOULD_APPLY_FLIPPING_AUG = False
-SHOULD_APPLY_COLOR_AUG = False
+SHOULD_APPLY_FLIPPING_AUG = True
+SHOULD_APPLY_COLOR_AUG = True
 SHOULD_APPLY_ROTATION_AUG = False
 
-SHOULD_TEST = False
+SHOULD_TEST = True
 
 def get_training_device():
     global CUDA
@@ -203,8 +200,8 @@ class PcamDataset(Dataset):
 
         self.rotation_angles = {
         }
-        self.patch_size = 160
-        self.patch_size_2 = 128
+        # self.patch_size = 160
+        self.patch_size_2 = 96
 
         self.classes = []
         self.class_images = []
@@ -259,8 +256,8 @@ class PcamDataset(Dataset):
         img = cv2.imread(img_path)
         orig_img = img.copy()
         h, w, _ = img.shape
-        if h != 2 * self.patch_size or w != 2 * self.patch_size:
-            img = cv2.resize(img, (2 * self.patch_size, 2 * self.patch_size))
+        # if h != 2 * self.patch_size or w != 2 * self.patch_size:
+        #     img = cv2.resize(img, (2 * self.patch_size, 2 * self.patch_size))
 
         if self.mode == "train":
             if SHOULD_APPLY_FLIPPING_AUG:
@@ -338,7 +335,7 @@ class PcamDataset(Dataset):
         #
         # # 0 - 255 ---> 0 - 1
         # # img = img / 255
-        #
+
         # img = img_2.astype(np.float32)
 
         if self.transform:
@@ -347,7 +344,7 @@ class PcamDataset(Dataset):
         return img, class_idx, orig_img, file_name
 
 
-def make_dataloaders(data_dir):
+def make_dataloaders(data_dir,mode = "val"):
     kwargs = {'num_workers': 1, 'pin_memory': True} if CUDA else {}
 
     train_transforms = transforms.Compose([
@@ -360,7 +357,7 @@ def make_dataloaders(data_dir):
 
     train_dataset = PcamDataset(os.path.join(data_dir, "train"), "train", transform=train_transforms)
     if SHOULD_TEST:
-        test_dataset = PcamDataset(os.path.join(data_dir, "test"), "test", transform=test_transforms)
+        test_dataset = PcamDataset(os.path.join(data_dir, mode), mode, transform=test_transforms)
     else:
         test_dataset = None
 
@@ -410,24 +407,20 @@ def test(data_loader, model, criterion, vis=False):
     loss = 0
     correct_predictions = 0
     dataset_len = 0.
-    if num_sub_classes:
-        confusion_matrix = torch.zeros(num_sub_classes, num_sub_classes)
-    else:
-        confusion_matrix = torch.zeros(NUM_CLASSES, NUM_CLASSES)
+    confusion_matrix = torch.zeros(NUM_CLASSES, NUM_CLASSES)
 
     if vis:
-        vis_dir = os.path.join(EXP_NAME, "vis")
-        if num_sub_classes:
-            dir_num = num_sub_classes
-        else:
-            dir_num = NUM_CLASSES
+        vis_dir = os.path.join(exp_dir, "vis")
+        dir_num = NUM_CLASSES
         for i in range(dir_num):
             for j in range(dir_num):
                 create_dir(os.path.join(vis_dir, str(i) + "_" + str(j)))
 
-    f = open('prediction.csv', 'w')
+    f = open(os.path.join(exp_dir,'prediction.csv'), 'w')
 
     for batch_idx, data in tqdm(enumerate(data_loader)):
+        if batch_idx == TEST_STOP_STEP:
+            break
         images, labels, orig_imges, file_names = data
         if CUDA:
             images, labels = images.cuda(), labels.cuda()
@@ -462,7 +455,7 @@ def test(data_loader, model, criterion, vis=False):
 
 
 def main(data_path, model_path, model):
-    train_loader, test_loader, train_dataset, _ = make_dataloaders(data_path)
+    train_loader, test_loader, _, _ = make_dataloaders(data_path)
 
     if model_path is not None:
         # model.load_state_dict(torch.load(model_path, map_location=device))
@@ -479,8 +472,6 @@ def main(data_path, model_path, model):
     scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
     best_accuracy = 0
     model.train()
-    if num_sub_classes:
-        model.apply(set_bn_eval)
     for i in range(1, EPOCHS + 1):
         print("**** Training ****")
         print('Learning rate', optimizer.param_groups[0]['lr'])
@@ -488,16 +479,20 @@ def main(data_path, model_path, model):
         for batch_idx, data in enumerate(train_loader):
 
             # TODO
-            # if batch_idx == 300:
+            if batch_idx == TRAIN_STOP_STEP:
+                break
+            # if batch_idx == INTERMEDIATE_TEST_STEP:
+            #     print("**** Intermediate Testing and stopping ****")
             #     model.eval()
             #     with torch.no_grad():
             #         test_loss, accuracy, _ = test(test_loader, model, criterion)
             #     print("Epoch: {}, Loss: {}, Accuracy: {}".format(i, test_loss, accuracy))
             #     print('Saving intermediate weight:', accuracy)
-            #     torch.save(model.state_dict(), os.path.join(EXP_NAME, 'checkpoint_intermediate.pth'))
+            #     torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_intermediate.pth'))
             #     exit(0)
             train_loss += train(data, model, criterion, optimizer)
             if (batch_idx + 1) % LOSS_DISPLAY_STEP == 0:
+                track_train_loss.append(train_loss / LOSS_DISPLAY_STEP)
                 print("Epoch: {}, Batch: {}/{}, Loss: {}".format(i, batch_idx + 1, len(train_loader),
                                                                  train_loss / LOSS_DISPLAY_STEP))
                 sys.stdout.flush()
@@ -508,20 +503,21 @@ def main(data_path, model_path, model):
             model.eval()
             with torch.no_grad():
                 test_loss, accuracy, _ = test(test_loader, model, criterion)
+                track_test_loss.append(test_loss)
                 print("Epoch: {}, Loss: {}, Accuracy: {}".format(i, test_loss, accuracy))
                 if accuracy >= best_accuracy:
                     best_accuracy = accuracy
                     print('Found new best Accuracy:', accuracy)
-                    torch.save(model.state_dict(), os.path.join(EXP_NAME, 'checkpoint_best.pth'))
+                    torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_best.pth'))
             sys.stdout.flush()
 
         # TODO
         if i % SAVE_STEP == 0:
-            torch.save(model.state_dict(), os.path.join(EXP_NAME, 'checkpoint_' + str(i) + '.pth'))
+            torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_' + str(i) + '.pth'))
 
 
 def test_pretrained(model_path, data_path, model):
-    train_loader, test_loader, train_dataset, _ = make_dataloaders(data_path)
+    train_loader, test_loader, _, _ = make_dataloaders(data_path,mode="test")
     if CUDA:
         model = model.cuda()
     # criterion = nn.NLLLoss()
@@ -584,16 +580,23 @@ def test_pretrained(model_path, data_path, model):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', type=str, default="trainval",
-                        help='Final fov s3 path data')
+                        help='training or testing')
     parser.add_argument('--data_dir', type=str,
-                        default='/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/histopathologic-cancer-detection', required=False,
+                        default='/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/histopathologic-cancer-detection/main_split_data', required=False,
                                  help='Input directory')
-    parser.add_argument('--model', type=str, default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data"
-                                                     "/model_output", required=False,
-                                                      help='Output directory')
+    parser.add_argument('--output_dir', type=str,
+                        default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output",
+                        required=False,
+                        help='Input directory')
+    parser.add_argument('--model', type=str, default="", required=False,
+                                                      help='Model for testing')
+    parser.add_argument('--exp_name', type=str, default="resnet", required=False,
+                        help='Which model is used')
 
     args = parser.parse_args()
     model = resnet50()
+    exp_dir = os.path.join(args.output_dir, args.exp_name)
+    create_dir(exp_dir)
     device = get_training_device()
     if args.mode == "trainval":
         main(args.data_dir, args.model, model)

@@ -32,9 +32,9 @@ class Resnet_50(nn.Module):
         return feature
 
 
-class Resnet_50_BotNet(nn.Module):
+class EnsembleBotResNet(nn.Module):
     def __init__(self):
-        super(Resnet_50_BotNet, self).__init__()
+        super(EnsembleBotResNet, self).__init__()
         self.resnet_50 = Resnet_50()
         self.bot_net = nn.Sequential(
             *list(resnet50().children())[:5],
@@ -56,6 +56,7 @@ class Resnet_50_BotNet(nn.Module):
                                       nn.ReLU(),
                                       nn.Dropout(0.5),
                                       nn.Linear(512, num_classes),
+                                      nn.Softmax(dim=1)
                                       )
 
     def forward(self, x):
@@ -66,6 +67,6 @@ class Resnet_50_BotNet(nn.Module):
         return out
 
 
-com_mod = Resnet_50_BotNet()
-combined = com_mod(x)
-print(combined.shape)
+# com_mod = EnsembleBotResNet()
+# combined = com_mod(x)
+# print(combined.shape)
