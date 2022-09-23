@@ -2,7 +2,7 @@ import argparse
 import os
 import random
 import sys
-
+import pandas as pd 
 import cv2
 import numpy as np
 import torch
@@ -20,17 +20,17 @@ from utils.util_script import create_dir
 
 NUM_CLASSES = 2
 num_sub_classes = None
-learning_rate = 0.01
+learning_rate = 0.001
 BATCH_SIZE = 32
-EPOCHS = 5
+EPOCHS = 50
 SGD_LR_DECAY_STEP = 10
 
 # Intermediate display step
-LOSS_DISPLAY_STEP = 2
-SAVE_STEP = 5
+LOSS_DISPLAY_STEP = 5
+SAVE_STEP = 10
 INTERMEDIATE_TEST_STEP = 1000
-TEST_STOP_STEP = 10
-TRAIN_STOP_STEP = 10
+TEST_STOP_STEP = 500
+TRAIN_STOP_STEP = 2000
 
 
 track_train_loss = []
@@ -39,8 +39,8 @@ track_test_loss = []
 
 loss_fun = 'CE'
 
-SHOULD_APPLY_FLIPPING_AUG = True
-SHOULD_APPLY_COLOR_AUG = True
+SHOULD_APPLY_FLIPPING_AUG = False
+SHOULD_APPLY_COLOR_AUG = False
 SHOULD_APPLY_ROTATION_AUG = False
 
 SHOULD_TEST = True
@@ -345,7 +345,7 @@ class PcamDataset(Dataset):
 
 
 def make_dataloaders(data_dir,mode = "val"):
-    kwargs = {'num_workers': 1, 'pin_memory': True} if CUDA else {}
+    kwargs = {'num_workers': 4, 'pin_memory': True} if CUDA else {}
 
     train_transforms = transforms.Compose([
         transforms.ToTensor(),
@@ -392,8 +392,8 @@ class ConvNet(nn.Module):
 
 def train(data, model, criterion, optimizer):
     images, labels, _, _ = data
-    if CUDA:
-        images, labels = images.cuda(), labels.cuda()
+    images.to(device) 
+    labels.to(device)
     outputs = model(images)
     loss = criterion(outputs, labels)
     optimizer.zero_grad()
@@ -422,8 +422,8 @@ def test(data_loader, model, criterion, vis=False):
         if batch_idx == TEST_STOP_STEP:
             break
         images, labels, orig_imges, file_names = data
-        if CUDA:
-            images, labels = images.cuda(), labels.cuda()
+        images.to(device) 
+        labels.to(device)
         outputs = model(images)
         loss += criterion(outputs, labels)
         predictions = outputs.argmax(dim=1)
@@ -508,12 +508,15 @@ def main(data_path, model_path, model):
                 if accuracy >= best_accuracy:
                     best_accuracy = accuracy
                     print('Found new best Accuracy:', accuracy)
-                    torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_best.pth'))
+                    torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_best_epoch_num_'+str(i)+'_acc_'+str(round(100*accuracy,2))+'.pth'))
             sys.stdout.flush()
 
         # TODO
         if i % SAVE_STEP == 0:
             torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_' + str(i) + '.pth'))
+
+        pd.DataFrame(track_train_loss).to_csv(os.path.join(exp_dir,'train_loss.csv'))
+        pd.DataFrame(track_test_loss).to_csv(os.path.join(exp_dir,'test_loss.csv'))
 
 
 def test_pretrained(model_path, data_path, model):
@@ -582,12 +585,12 @@ if __name__ == "__main__":
     parser.add_argument('--mode', type=str, default="trainval",
                         help='training or testing')
     parser.add_argument('--data_dir', type=str,
-                        default='/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/histopathologic-cancer-detection/main_split_data', required=False,
+                        default='/data/Eshwar/main_split_data', required=False,
                                  help='Input directory')
     parser.add_argument('--output_dir', type=str,
-                        default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output",
+                        default="/data/Eshwar/model_output",
                         required=False,
-                        help='Input directory')
+                        help='Output directory')
     parser.add_argument('--model', type=str, default="", required=False,
                                                       help='Model for testing')
     parser.add_argument('--exp_name', type=str, default="resnet", required=False,
