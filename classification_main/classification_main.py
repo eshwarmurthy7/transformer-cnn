@@ -11,11 +11,11 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Dataset
 from torchvision import models, transforms
-from torchvision.models import resnet50
+from torchvision.models import resnet50,densenet121
 from tqdm import tqdm
 from botnet_resnet.ensemble_main import EnsembleBotResNet
 from bottleneck_transformer_pytorch.botnet_main import BotNet
-from play_books.vit import ViT
+from base_vit.vit import ViT
 
 from utils.util_script import create_dir
 
@@ -49,8 +49,8 @@ track_test_loss = []
 
 loss_fun = 'CE'
 
-SHOULD_APPLY_FLIPPING_AUG = False
-SHOULD_APPLY_COLOR_AUG = False
+SHOULD_APPLY_FLIPPING_AUG = True
+SHOULD_APPLY_COLOR_AUG = True
 SHOULD_APPLY_ROTATION_AUG = False
 
 SHOULD_TEST = True
@@ -603,13 +603,14 @@ if __name__ == "__main__":
                         help='Output directory')
     parser.add_argument('--model', type=str, default="", required=False,
                                                       help='Model for testing')
-    parser.add_argument('--exp_name', type=str, default="VIT", required=False,
+    parser.add_argument('--exp_name', type=str, default="Densnet", required=False,
                         help='Which model is used')
     args = parser.parse_args()
     # model = resnet50()
     # model = BotNet()
     # model = EnsembleBotResNet()
-    model = ViT()
+    # model = ViT()
+    model = densenet121()
     exp_dir = os.path.join(args.output_dir, args.exp_name)
     create_dir(exp_dir)
     device = get_training_device()
