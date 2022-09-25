@@ -3,6 +3,7 @@ from torch import nn
 from torchvision.models import resnet50
 
 from bottleneck_transformer_pytorch import BottleStack
+from torchsummary import summary
 
 class BotNet(nn.Module):
 

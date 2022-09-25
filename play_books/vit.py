@@ -1,6 +1,5 @@
 import torch
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 
 from torch import nn
 from torch import Tensor
@@ -10,15 +9,15 @@ from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange, Reduce
 from torchsummary import summary
 
-img = Image.open('./cat.jpg')
-
-transform = Compose([Resize((224, 224)), ToTensor()])
-x = transform(img)
-x = x.unsqueeze(0) # add batch dim
-print(x.shape)
+# img = Image.open('./cat.jpg')
+#
+# transform = Compose([Resize((224, 224)), ToTensor()])
+# x = transform(img)
+# x = x.unsqueeze(0) # add batch dim
+# print(x.shape)
 
 patch_size = 16 # 16 pixels
-pathes = rearrange(x, 'b c (h s1) (w s2) -> b (h w) (s1 s2 c)', s1=patch_size, s2=patch_size)
+# pathes = rearrange(x, 'b c (h s1) (w s2) -> b (h w) (s1 s2 c)', s1=patch_size, s2=patch_size)
 
 class PatchEmbedding(nn.Module):
     def __init__(self, in_channels: int = 3, patch_size: int = 16, emb_size: int = 768, img_size: int = 224):
@@ -43,7 +42,7 @@ class PatchEmbedding(nn.Module):
         x += self.positions
         return x
     
-print(PatchEmbedding()(x).shape)
+# print(PatchEmbedding()(x).shape)
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, emb_size: int = 768, num_heads: int = 8, dropout: float = 0):
@@ -74,8 +73,8 @@ class MultiHeadAttention(nn.Module):
         out = self.projection(out)
         return out
     
-patches_embedded = PatchEmbedding()(x)
-print(MultiHeadAttention()(patches_embedded).shape)
+# patches_embedded = PatchEmbedding()(x)
+# print(MultiHeadAttention()(patches_embedded).shape)
 
 
 class ResidualAdd(nn.Module):
@@ -119,9 +118,9 @@ class TransformerEncoderBlock(nn.Sequential):
                 nn.Dropout(drop_p)
             )
             ))
-
-patches_embedded = PatchEmbedding()(x)
-TransformerEncoderBlock()(patches_embedded).shape
+#
+# patches_embedded = PatchEmbedding()(x)
+# TransformerEncoderBlock()(patches_embedded).shape
 
 
 class TransformerEncoder(nn.Sequential):
@@ -142,14 +141,56 @@ class ViT(nn.Sequential):
                 in_channels: int = 3,
                 patch_size: int = 16,
                 emb_size: int = 768,
-                img_size: int = 224,
+                img_size: int = 96,
                 depth: int = 12,
-                n_classes: int = 1000,
+                n_classes: int = 2,
                 **kwargs):
         super().__init__(
             PatchEmbedding(in_channels, patch_size, emb_size, img_size),
             TransformerEncoder(depth, emb_size=emb_size, **kwargs),
-            ClassificationHead(emb_size, n_classes)
+            ClassificationHead(emb_size, n_classes),
+            # nn.Sequential(
+            #     nn.Linear(1000, 512),
+            #     nn.ReLU(),
+            #     nn.Dropout(0.5),
+            #     nn.Linear(512, n_classes),
+            #     nn.Softmax(dim=1)
         )
 
-summary(ViT(), (3, 224, 224), device='cpu')
+        # self.fc_layer = nn.Sequential(
+        #     nn.Linear(1000, 512),
+        #     nn.ReLU(),
+        #     nn.Dropout(0.5),
+        #     nn.Linear(512, n_classes),
+        #     nn.Softmax(dim=1))
+    #
+    # def forward(self, input):
+    #     vit__out = self.bot_net(x)
+    #     out = self.fc_layer(bot_net_out)
+    #     return out
+#
+#
+# if __name__ == "__main__":
+#     if torch.cuda.is_available():
+#         CUDA = True
+#         device = torch.device("cuda")
+#         print("Training on CUDA")
+#     elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+#         CUDA = False
+#         device = torch.device("mps")
+#         print("Training on mps")
+#     else:
+#         CUDA = False
+#         device = torch.device("cpu")
+#         print("Training on CPU")
+# x = torch.randn(2, 3, 96, 96)
+# com_mod = ViT()
+# # layers = list(com_mod.modules())
+# # for i, _ in enumerate(layers):
+# #     print(x.shape)
+# #     print(layers[0][i])
+# #     x = layers[0][i](x)
+# #     print(x.shape)
+# combined = com_mod(x)
+# print(combined.shape)
+# summary(ViT(), (3, 96, 96), device="cpu")

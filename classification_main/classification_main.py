@@ -15,6 +15,7 @@ from torchvision.models import resnet50
 from tqdm import tqdm
 from botnet_resnet.ensemble_main import EnsembleBotResNet
 from bottleneck_transformer_pytorch.botnet_main import BotNet
+from play_books.vit import ViT
 
 from utils.util_script import create_dir
 
@@ -22,15 +23,24 @@ NUM_CLASSES = 2
 num_sub_classes = None
 learning_rate = 0.001
 BATCH_SIZE = 32
-EPOCHS = 50
 SGD_LR_DECAY_STEP = 10
 
 # Intermediate display step
-LOSS_DISPLAY_STEP = 5
-SAVE_STEP = 10
-INTERMEDIATE_TEST_STEP = 1000
-TEST_STOP_STEP = 500
-TRAIN_STOP_STEP = 2000
+ablation_run = False
+if not ablation_run:
+    EPOCHS = 20
+    LOSS_DISPLAY_STEP = 1
+    SAVE_STEP = 1
+    INTERMEDIATE_TEST_STEP = 1000
+    TEST_STOP_STEP = 500
+    TRAIN_STOP_STEP = 600
+else:
+    EPOCHS = 3
+    LOSS_DISPLAY_STEP = 1
+    SAVE_STEP = 1
+    INTERMEDIATE_TEST_STEP = 5
+    TEST_STOP_STEP = 5
+    TRAIN_STOP_STEP = 5
 
 
 track_train_loss = []
@@ -585,19 +595,21 @@ if __name__ == "__main__":
     parser.add_argument('--mode', type=str, default="trainval",
                         help='training or testing')
     parser.add_argument('--data_dir', type=str,
-                        default='/data/Eshwar/main_split_data', required=False,
+                        default='/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/histopathologic-cancer-detection/main_split_data', required=False,
                                  help='Input directory')
     parser.add_argument('--output_dir', type=str,
-                        default="/data/Eshwar/model_output",
+                        default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output",
                         required=False,
                         help='Output directory')
     parser.add_argument('--model', type=str, default="", required=False,
                                                       help='Model for testing')
-    parser.add_argument('--exp_name', type=str, default="resnet", required=False,
+    parser.add_argument('--exp_name', type=str, default="VIT", required=False,
                         help='Which model is used')
-
     args = parser.parse_args()
-    model = resnet50()
+    # model = resnet50()
+    # model = BotNet()
+    # model = EnsembleBotResNet()
+    model = ViT()
     exp_dir = os.path.join(args.output_dir, args.exp_name)
     create_dir(exp_dir)
     device = get_training_device()
