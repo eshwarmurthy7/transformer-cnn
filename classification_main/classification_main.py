@@ -20,7 +20,6 @@ from base_vit.vit import ViT
 from utils.util_script import create_dir
 
 NUM_CLASSES = 2
-num_sub_classes = None
 learning_rate = 0.001
 BATCH_SIZE = 32
 SGD_LR_DECAY_STEP = 10
@@ -60,15 +59,15 @@ def get_training_device():
     if torch.cuda.is_available():
         CUDA = True
         device = torch.device("cuda")
-        print("Training on CUDA")
+        print("Training/Testing on CUDA")
     elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
         CUDA = False
         device = torch.device("mps")
-        print("Training on mps")
+        print("Training/Testing on mps")
     else:
         CUDA = False
         device = torch.device("cpu")
-        print("Training on CPU")
+        print("Training/Testing on CPU")
 
 def set_bn_eval(module):
     if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
@@ -413,7 +412,7 @@ def train(data, model, criterion, optimizer):
     return loss.data
 
 
-def test(data_loader, model, criterion, vis=False):
+def test(data_loader, model, criterion, vis=False,save_vis=False):
     loss = 0
     correct_predictions = 0
     dataset_len = 0.
@@ -426,10 +425,10 @@ def test(data_loader, model, criterion, vis=False):
             for j in range(dir_num):
                 create_dir(os.path.join(vis_dir, str(i) + "_" + str(j)))
 
-    f = open(os.path.join(exp_dir,'prediction.csv'), 'w')
+    f = open(os.path.join(exp_dir,args.exp_name +'_prediction.csv'), 'w')
 
     for batch_idx, data in tqdm(enumerate(data_loader)):
-        if batch_idx == TEST_STOP_STEP:
+        if batch_idx == TEST_STOP_STEP and args.mode == "trainval":
             break
         images, labels, orig_imges, file_names = data
         images.to(device) 
@@ -449,7 +448,8 @@ def test(data_loader, model, criterion, vis=False):
         temp_idx = 0
         for t, p, orig_img, file_name in zip(labels.view(-1), predictions.view(-1), orig_imges, file_names):
             confusion_matrix[t.long(), p.long()] += 1
-            if vis:
+            # To Save visualisations
+            if vis and save_vis:
                 # img_name = str(batch_idx) + "_" + str(temp_idx) + ".jpg"
                 img_path = os.path.join(vis_dir, str(t.cpu().long().item()) + "_" +
                                         str(p.cpu().long().item()), file_name)
@@ -537,39 +537,9 @@ def test_pretrained(model_path, data_path, model):
     if loss_fun == 'CE':
         criterion = nn.CrossEntropyLoss()
 
-    state_dict = torch.load(model_path, map_location=torch.device('cpu'))
+    state_dict = torch.load(model_path, map_location=device)
     model.load_state_dict(state_dict)
     model.eval()
-
-    # Strip the sub network starts
-    # state_dict = torch.load(model_path, map_location=torch.device('cpu'))
-    # backbone_dict = torch.load('/Users/adhithya/Desktop/models/wbc_resnet_18.pth', map_location=torch.device('cpu'))
-    # sub_class_dict = {}
-    # for key in state_dict.keys():
-    #     if key in ['fc_layer.0.weight', 'fc_layer.0.bias', 'fc_layer.3.weight', 'fc_layer.3.bias']:
-    #         sub_class_dict[key] = state_dict[key]
-    #         continue
-    #     if not torch.all(state_dict[key].eq(backbone_dict[key])):
-    #         print('Found mismatch in layer', key)
-    #         break
-    #     state_dict[key] = backbone_dict[key]
-    # torch.save(sub_class_dict, './wbc_model/ig.pth')
-    # exit(0)
-    # Strip the sub network ends
-
-    # verify stripped network starts
-
-    '''state_dict = {}
-    backbone_dict = torch.load('./wbc_resnet18_adithya/checkpoint_20.pth', map_location=torch.device('cpu'))
-    sub_class_dict = torch.load('./ig.pth', map_location=torch.device('cpu'))
-    for key in backbone_dict.keys():
-        if key in ['fc_layer.0.weight', 'fc_layer.0.bias', 'fc_layer.3.weight', 'fc_layer.3.bias']:
-            state_dict[key] = sub_class_dict[key]
-        else:
-            state_dict[key] = backbone_dict[key]'''
-
-    # verify stripped network ends
-
     with torch.no_grad():
         test_loss, accuracy, confusion_matrix = test(test_loader, model, criterion, vis=True)
     print("Loss: {}, Accuracy: {}".format(test_loss, accuracy))
@@ -603,14 +573,14 @@ if __name__ == "__main__":
                         help='Output directory')
     parser.add_argument('--model', type=str, default="", required=False,
                                                       help='Model for testing')
-    parser.add_argument('--exp_name', type=str, default="Densnet", required=False,
+    parser.add_argument('--exp_name', type=str, default="resnet", required=False,
                         help='Which model is used')
     args = parser.parse_args()
-    # model = resnet50()
+    model = resnet50()
     # model = BotNet()
     # model = EnsembleBotResNet()
     # model = ViT()
-    model = densenet121()
+    # model = densenet121()
     exp_dir = os.path.join(args.output_dir, args.exp_name)
     create_dir(exp_dir)
     device = get_training_device()
