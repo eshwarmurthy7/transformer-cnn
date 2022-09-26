@@ -16,11 +16,12 @@ from tqdm import tqdm
 from botnet_resnet.ensemble_main import EnsembleBotResNet
 from bottleneck_transformer_pytorch.botnet_main import BotNet
 from base_vit.vit import ViT
+from custom_network.CustomCnnNetwork import CustomCNN
 
 from utils.util_script import create_dir
 
 NUM_CLASSES = 2
-learning_rate = 0.001
+learning_rate = 0.002
 BATCH_SIZE = 32
 SGD_LR_DECAY_STEP = 10
 
@@ -357,11 +358,20 @@ def make_dataloaders(data_dir,mode = "val"):
     kwargs = {'num_workers': 4, 'pin_memory': True} if CUDA else {}
 
     train_transforms = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Pad(64, padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),  
+        transforms.RandomVerticalFlip(),
+        transforms.RandomRotation(20),   
         transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5],std=[0.5, 0.5, 0.5])
     ])
 
     test_transforms = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Pad(64, padding_mode='reflect'),
         transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5],std=[0.5, 0.5, 0.5])
     ])
 
     train_dataset = PcamDataset(os.path.join(data_dir, "train"), "train", transform=train_transforms)
@@ -573,14 +583,15 @@ if __name__ == "__main__":
                         help='Output directory')
     parser.add_argument('--model', type=str, default="", required=False,
                                                       help='Model for testing')
-    parser.add_argument('--exp_name', type=str, default="resnet", required=False,
+    parser.add_argument('--exp_name', type=str, default="CustomCNN", required=False,
                         help='Which model is used')
     args = parser.parse_args()
-    model = resnet50()
+    # model = resnet50()
     # model = BotNet()
     # model = EnsembleBotResNet()
     # model = ViT()
     # model = densenet121()
+    model  = CustomCNN()
     exp_dir = os.path.join(args.output_dir, args.exp_name)
     create_dir(exp_dir)
     device = get_training_device()
