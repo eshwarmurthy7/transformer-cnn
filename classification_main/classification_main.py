@@ -2,6 +2,7 @@ import argparse
 import os
 import random
 import sys
+sys.path.append("/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Repos/transformer-cnn")
 import pandas as pd 
 import cv2
 import numpy as np
@@ -11,12 +12,14 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Dataset
 from torchvision import models, transforms
-from torchvision.models import resnet50,densenet121
 from tqdm import tqdm
+from torchvision.models import resnet50,densenet121,resnet18
 from botnet_resnet.ensemble_main import EnsembleBotResNet
 from bottleneck_transformer_pytorch.botnet_main import BotNet
 from base_vit.vit import ViT
 from custom_network.CustomCnnNetwork import CustomCNN
+from EnsembleModel.EnsembleModel import MyEnsemble
+from custom_network.CustomCnnNetwrok_2 import CustomModels
 
 from utils.util_script import create_dir
 
@@ -569,6 +572,22 @@ def test_pretrained(model_path, data_path, model):
     accuracies = (total - confusion_matrix.sum(0) - confusion_matrix.sum(1) + 2 * confusion_matrix.diagonal()) / total
     print("Accuracies = {}".format(accuracies))
 
+def get_model():
+    modelA = densenet121()
+    modelB = BotNet()
+    modelC = CustomCNN()
+    modelD = EnsembleBotResNet()
+    # Load state dicts
+    modelA.load_state_dict(torch.load(
+        "/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/Densnet/checkpoint_best_epoch_num_6_acc_82.59.pth"))
+    modelB.load_state_dict(torch.load(
+        "/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/Botnet_old/checkpoint_best_epoch_num_1_acc_80.5.pth"))
+    modelC.load_state_dict(torch.load(
+        "/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/CustomCNN/checkpoint_best_epoch_num_3_acc_84.06.pth"))
+    modelD.load_state_dict(torch.load(
+        "/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/EnsembleBotResnet/checkpoint_best_epoch_num_1_acc_81.11.pth"))
+    model = MyEnsemble(modelA, modelB, modelC, modelD)
+    return model
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -583,21 +602,26 @@ if __name__ == "__main__":
                         help='Output directory')
     parser.add_argument('--model', type=str, default="", required=False,
                                                       help='Model for testing')
-    parser.add_argument('--exp_name', type=str, default="CustomCNN", required=False,
+    parser.add_argument('--exp_name', type=str, default="model_25k_w_dw", required=False,
                         help='Which model is used')
     args = parser.parse_args()
+    # model = resnet18()
     # model = resnet50()
     # model = BotNet()
     # model = EnsembleBotResNet()
     # model = ViT()
     # model = densenet121()
-    model  = CustomCNN()
+    # model  = CustomCNN()
+    # model = get_model()
+    model = CustomModels(IN_CHANNEL=3,NUM_OUTPUT=2).init_model(model_name="model_25k_w_dw")
+
     exp_dir = os.path.join(args.output_dir, args.exp_name)
     create_dir(exp_dir)
     device = get_training_device()
     if args.mode == "trainval":
         main(args.data_dir, args.model, model)
     elif args.mode == "test":
+        # test_pretrained(args.model, args.data_dir, model)
         if args.model is None:
             print("Please provide model")
         else:
