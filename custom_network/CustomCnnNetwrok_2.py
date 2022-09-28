@@ -310,7 +310,8 @@ class CustomModels:
             nn.ReLU(),
             nn.BatchNorm2d(280),
 
-            nn.AvgPool2d(3),
+            # nn.AvgPool2d(3),
+            nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(280, self.n_class_output)
         )
@@ -427,7 +428,8 @@ class CustomModels:
             nn.ReLU(),
             nn.BatchNorm2d(415),
 
-            nn.AvgPool2d(3),
+            # nn.AvgPool2d(3),
+            nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(415, self.n_class_output)
         )

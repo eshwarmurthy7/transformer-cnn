@@ -18,7 +18,7 @@ from botnet_resnet.ensemble_main import EnsembleBotResNet
 from bottleneck_transformer_pytorch.botnet_main import BotNet
 from base_vit.vit import ViT
 from custom_network.CustomCnnNetwork import CustomCNN
-from EnsembleModel.EnsembleModel import MyEnsemble
+# from EnsembleModel.EnsembleModel import MyEnsemble
 from custom_network.CustomCnnNetwrok_2 import CustomModels
 from torchsummary import summary
 # from torchsummaryX import summary
@@ -586,28 +586,31 @@ def get_model():
     '''Custom Models '''
     # model  = CustomCNN()
     # model = CustomModels(IN_CHANNEL=3,NUM_OUTPUT=2).init_model(model_name="model_25k_w_dw")
-    model = CustomModels(IN_CHANNEL=3, NUM_OUTPUT=2).init_model(model_name="model_1M_w_dw")
+    # model = CustomModels(IN_CHANNEL=3, NUM_OUTPUT=2).init_model(model_name="model_1M_w_dw")
+    # model = CustomModels(IN_CHANNEL=3, NUM_OUTPUT=2).init_model(model_name="model_340k_w_dw")
+    model = CustomModels(IN_CHANNEL=3, NUM_OUTPUT=2).init_model(model_name="model_600k_w_dw")
 
     '''Ensemble model '''
-    # modelA = densenet121()
-    # modelB = BotNet()
-    # modelC = CustomCNN()
-    # modelD = EnsembleBotResNet()
+    # model_1 = densenet121()
+    # model_2 = BotNet()
+    # model_3 = CustomCNN()
+    # model_4 = EnsembleBotResNet()
     # # Load state dicts
-    # modelA.load_state_dict(torch.load(
+    # model_1.load_state_dict(torch.load(
     #     "/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/Densnet/checkpoint_best_epoch_num_6_acc_82.59.pth"))
-    # modelB.load_state_dict(torch.load(
-    #     "/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/Botnet_old/checkpoint_best_epoch_num_1_acc_80.5.pth"))
-    # modelC.load_state_dict(torch.load(
+    # model_2.load_state_dict(torch.load(
+    #     "/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/Botnet/checkpoint_best_epoch_num_1_acc_80.5.pth"))
+    # model_3.load_state_dict(torch.load(
     #     "/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/CustomCNN/checkpoint_best_epoch_num_3_acc_84.06.pth"))
-    # modelD.load_state_dict(torch.load(
+    # model_4.load_state_dict(torch.load(
     #     "/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/EnsembleBotResnet/checkpoint_best_epoch_num_1_acc_81.11.pth"))
-    # model = MyEnsemble(modelA, modelB, modelC, modelD)
+    # model_list = [model_1, model_2, model_3, model_4]
+    # model = MyEnsemble(model_1, model_2, model_3, model_4)
     return model
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str, default="trainval",
+    parser.add_argument('--mode', type=str, default="test",
                         help='training or testing')
     parser.add_argument('--data_dir', type=str,
                         default='/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/histopathologic-cancer-detection/main_split_data', required=False,
@@ -616,9 +619,9 @@ if __name__ == "__main__":
                         default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output",
                         required=False,
                         help='Output directory')
-    parser.add_argument('--model', type=str, default="", required=False,
+    parser.add_argument('--model', type=str, default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/model_600k_w_dw_b16/checkpoint_best_epoch_num_1_acc_82.66.pth", required=False,
                                                       help='Model for testing')
-    parser.add_argument('--exp_name', type=str, default="model_1M_w_dw_b16", required=False,
+    parser.add_argument('--exp_name', type=str, default="model_600k_w_dw_b16", required=False,
                         help='Which model is used')
     args = parser.parse_args()
     model = get_model()
