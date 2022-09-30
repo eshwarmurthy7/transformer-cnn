@@ -24,10 +24,29 @@ from torchsummary import summary
 # from torchsummaryX import summary
 
 from utils.util_script import create_dir
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torchvision import datasets, transforms, models
+import matplotlib.pyplot as plt
+import seaborn as sns
+from torch.optim.lr_scheduler import StepLR
+from tqdm import tqdm
+from torchsummary import summary
+# from torchcontrib.optim import SWA
+import composer
+# from composer import DataloaderSpec
+from composer import Trainer
+from composer.algorithms import LabelSmoothing, CutOut, BlurPool, scale_schedule, SWA,SAM, MixUp, SqueezeExcite,ScaleSchedule
+from composer.trainer.devices.device_gpu import DeviceGPU
+import torchmetrics
+from torchmetrics.collections import MetricCollection
+from composer.models import ComposerClassifier
 
 NUM_CLASSES = 2
 learning_rate = 0.002
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 SGD_LR_DECAY_STEP = 10
 
 # Intermediate display step
@@ -38,7 +57,7 @@ if not ablation_run:
     SAVE_STEP = 1
     INTERMEDIATE_TEST_STEP = 1000
     TEST_STOP_STEP = 500
-    TRAIN_STOP_STEP = 600
+    TRAIN_STOP_STEP = 16000
 else:
     EPOCHS = 3
     LOSS_DISPLAY_STEP = 1
@@ -247,6 +266,8 @@ class PcamDataset(Dataset):
         temp = list(zip(self.images, self.labels))
         random.shuffle(temp)
         self.images, self.labels = zip(*temp)
+        self.labels = self.labels[0:TRAIN_STOP_STEP]
+        self.images = self.images[0:TRAIN_STOP_STEP]
 
     def get_weights(self):
         return self.weights
@@ -356,7 +377,9 @@ class PcamDataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        return img, class_idx, orig_img, file_name
+        # return img, class_idx, orig_img, file_name
+
+        return img, class_idx
 
 
 def make_dataloaders(data_dir,mode = "val"):
@@ -496,52 +519,75 @@ def main(data_path, model_path, model):
     # TODO change for IG(100)
     scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
     best_accuracy = 0
-    model.train()
-    for i in range(1, EPOCHS + 1):
-        print("**** Training ****")
-        print('Learning rate', optimizer.param_groups[0]['lr'])
-        train_loss = 0
-        for batch_idx, data in enumerate(train_loader):
+    my_model = ComposerClassifier(model).to(device)
+    # summary(my_model, input_size=(32, 3, 96, 96))
 
-            # TODO
-            if batch_idx == TRAIN_STOP_STEP:
-                break
-            # if batch_idx == INTERMEDIATE_TEST_STEP:
-            #     print("**** Intermediate Testing and stopping ****")
-            #     model.eval()
-            #     with torch.no_grad():
-            #         test_loss, accuracy, _ = test(test_loader, model, criterion)
-            #     print("Epoch: {}, Loss: {}, Accuracy: {}".format(i, test_loss, accuracy))
-            #     print('Saving intermediate weight:', accuracy)
-            #     torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_intermediate.pth'))
-            #     exit(0)
-            train_loss += train(data, model, criterion, optimizer)
-            if (batch_idx + 1) % LOSS_DISPLAY_STEP == 0:
-                track_train_loss.append(train_loss / LOSS_DISPLAY_STEP)
-                print("Epoch: {}, Batch: {}/{}, Loss: {}".format(i, batch_idx + 1, len(train_loader),
-                                                                 train_loss / LOSS_DISPLAY_STEP))
-                sys.stdout.flush()
-                train_loss = 0
-        scheduler.step()
-        if SHOULD_TEST:
-            print("**** Testing ****")
-            model.eval()
-            with torch.no_grad():
-                test_loss, accuracy, _ = test(test_loader, model, criterion)
-                track_test_loss.append(test_loss)
-                print("Epoch: {}, Loss: {}, Accuracy: {}".format(i, test_loss, accuracy))
-                if accuracy >= best_accuracy:
-                    best_accuracy = accuracy
-                    print('Found new best Accuracy:', accuracy)
-                    torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_best_epoch_num_'+str(i)+'_acc_'+str(round(100*accuracy,2))+'.pth'))
-            sys.stdout.flush()
 
-        # TODO
-        if i % SAVE_STEP == 0:
-            torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_' + str(i) + '.pth'))
+    trainer = Trainer(
+        model=my_model,
+        train_dataloader=train_loader,
+        eval_dataloader=test_loader,
+        optimizers=optimizer,
+        max_duration='15ep',
+        device=device,
+        save_interval='1ep',
+        save_folder = exp_dir,
+        algorithms=[
+            BlurPool(replace_convs=True, replace_maxpools=True, blur_first=False),
+            CutOut(num_holes=1, length=8),
+        ]
+    )
+    trainer.fit()
 
-        pd.DataFrame(track_train_loss).to_csv(os.path.join(exp_dir,'train_loss.csv'))
-        pd.DataFrame(track_test_loss).to_csv(os.path.join(exp_dir,'test_loss.csv'))
+
+
+    '''Train without Mosaic ML framework'''
+    # model.train()
+    # for i in range(1, EPOCHS + 1):
+    #     print("**** Training ****")
+    #     print('Learning rate', optimizer.param_groups[0]['lr'])
+    #     train_loss = 0
+    #     for batch_idx, data in enumerate(train_loader):
+    #
+    #         # TODO
+    #         if batch_idx == TRAIN_STOP_STEP:
+    #             break
+    #         # if batch_idx == INTERMEDIATE_TEST_STEP:
+    #         #     print("**** Intermediate Testing and stopping ****")
+    #         #     model.eval()
+    #         #     with torch.no_grad():
+    #         #         test_loss, accuracy, _ = test(test_loader, model, criterion)
+    #         #     print("Epoch: {}, Loss: {}, Accuracy: {}".format(i, test_loss, accuracy))
+    #         #     print('Saving intermediate weight:', accuracy)
+    #         #     torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_intermediate.pth'))
+    #         #     exit(0)
+    #         train_loss += train(data, model, criterion, optimizer)
+    #         if (batch_idx + 1) % LOSS_DISPLAY_STEP == 0:
+    #             track_train_loss.append(train_loss / LOSS_DISPLAY_STEP)
+    #             print("Epoch: {}, Batch: {}/{}, Loss: {}".format(i, batch_idx + 1, len(train_loader),
+    #                                                              train_loss / LOSS_DISPLAY_STEP))
+    #             sys.stdout.flush()
+    #             train_loss = 0
+    #     scheduler.step()
+    #     if SHOULD_TEST:
+    #         print("**** Testing ****")
+    #         model.eval()
+    #         with torch.no_grad():
+    #             test_loss, accuracy, _ = test(test_loader, model, criterion)
+    #             track_test_loss.append(test_loss)
+    #             print("Epoch: {}, Loss: {}, Accuracy: {}".format(i, test_loss, accuracy))
+    #             if accuracy >= best_accuracy:
+    #                 best_accuracy = accuracy
+    #                 print('Found new best Accuracy:', accuracy)
+    #                 torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_best_epoch_num_'+str(i)+'_acc_'+str(round(100*accuracy,2))+'.pth'))
+    #         sys.stdout.flush()
+    #
+    #     # TODO
+    #     if i % SAVE_STEP == 0:
+    #         torch.save(model.state_dict(), os.path.join(exp_dir, 'checkpoint_' + str(i) + '.pth'))
+    #
+    #     pd.DataFrame(track_train_loss).to_csv(os.path.join(exp_dir,'train_loss.csv'))
+    #     pd.DataFrame(track_test_loss).to_csv(os.path.join(exp_dir,'test_loss.csv'))
 
 
 def test_pretrained(model_path, data_path, model):
@@ -587,8 +633,8 @@ def get_model():
     # model  = CustomCNN()
     # model = CustomModels(IN_CHANNEL=3,NUM_OUTPUT=2).init_model(model_name="model_25k_w_dw")
     # model = CustomModels(IN_CHANNEL=3, NUM_OUTPUT=2).init_model(model_name="model_1M_w_dw")
-    # model = CustomModels(IN_CHANNEL=3, NUM_OUTPUT=2).init_model(model_name="model_340k_w_dw")
-    model = CustomModels(IN_CHANNEL=3, NUM_OUTPUT=2).init_model(model_name="model_600k_w_dw")
+    model = CustomModels(IN_CHANNEL=3, NUM_OUTPUT=2).init_model(model_name="model_340k_w_dw")
+    # model = CustomModels(IN_CHANNEL=3, NUM_OUTPUT=2).init_model(model_name="model_600k_w_dw")
 
     '''Ensemble model '''
     # model_1 = densenet121()
@@ -610,7 +656,7 @@ def get_model():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str, default="test",
+    parser.add_argument('--mode', type=str, default="trainval",
                         help='training or testing')
     parser.add_argument('--data_dir', type=str,
                         default='/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/histopathologic-cancer-detection/main_split_data', required=False,
@@ -619,9 +665,9 @@ if __name__ == "__main__":
                         default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output",
                         required=False,
                         help='Output directory')
-    parser.add_argument('--model', type=str, default="/Users/eshwarmurthy/Desktop/personal/Msc-LJMU/Pcam_data/model_output/model_600k_w_dw_b16/checkpoint_best_epoch_num_1_acc_82.66.pth", required=False,
+    parser.add_argument('--model', type=str, default="", required=False,
                                                       help='Model for testing')
-    parser.add_argument('--exp_name', type=str, default="model_600k_w_dw_b16", required=False,
+    parser.add_argument('--exp_name', type=str, default="model_340k_mosaic_ml", required=False,
                         help='Which model is used')
     args = parser.parse_args()
     model = get_model()
