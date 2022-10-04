@@ -575,7 +575,7 @@ def test_pretrained(model_path, data_path, model):
     print("Accuracies = {}".format(accuracies))
 
 def get_model():
-    '''VIT`s and Standard architectures'''
+    '''VIT`s and Standard CNN architectures'''
     # model = resnet18()
     # model = resnet50()
     # model = BotNet()
